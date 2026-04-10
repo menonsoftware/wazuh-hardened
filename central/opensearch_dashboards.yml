@@ -1,0 +1,16 @@
+server.host: "0.0.0.0"
+server.port: 5601
+opensearch.hosts: ["${OPENSEARCH_HOST_1}", "${OPENSEARCH_HOST_2}"]
+opensearch.ssl.verificationMode: "full"
+opensearch.username: "${INDEXER_USER}"
+opensearch.password: "${INDEXER_PASSWORD}"
+opensearch.requestHeadersAllowlist: ["securitytenant", "Authorization"]
+opensearch.ssl.certificateAuthorities: ["/usr/share/wazuh-dashboard/certs/root-ca.pem"]
+opensearch_security.multitenancy.enabled: false
+opensearch_security.readonly_mode.roles: ["kibana_read_only"]
+opensearch_security.cookie.secure: true
+server.ssl.enabled: true
+server.ssl.certificate: "/usr/share/wazuh-dashboard/certs/dashboard.pem"
+server.ssl.key: "/usr/share/wazuh-dashboard/certs/dashboard-key.pem"
+server.ssl.certificateAuthorities: ["/usr/share/wazuh-dashboard/certs/root-ca.pem"]
+uiSettings.overrides.defaultRoute: /app/wz-home

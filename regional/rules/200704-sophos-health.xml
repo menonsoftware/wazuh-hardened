@@ -1,0 +1,10 @@
+<group name="sophos,health">
+  <rule id="200704" level="5">
+    <field name="healthcheck">bad</field>
+    <description>Sophos Alert - Bad Health</description>
+  </rule>
+  <rule id="200705" level="5">
+    <field name="healthcheck">good</field>
+    <description>Sophos Alert - Good Health</description>
+  </rule>
+</group>

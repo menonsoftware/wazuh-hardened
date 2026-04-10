@@ -1,0 +1,41 @@
+http:
+  routers:
+    dashboard:
+      rule: Host(`dashboard.connection.lan`)
+      entryPoints:
+        - websecure
+      service: dashboard-svc
+      tls: {}
+
+    helpdesk:
+      rule: Host(`helpdesk.connection.lan`)
+      entryPoints:
+        - websecure
+      service: helpdesk-svc
+      tls: {}
+
+  services:
+    dashboard-svc:
+      loadBalancer:
+        servers:
+          - url: https://central-wazuh.dashboard-1:5601
+        passHostHeader: true
+        serversTransport: internal-insecure
+
+    helpdesk-svc:
+      loadBalancer:
+        servers:
+          - url: https://zammad_proxy:8443
+        passHostHeader: true
+        serversTransport: internal-insecure
+
+  serversTransports:
+    internal-insecure:
+      insecureSkipVerify: true
+
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs/dashboard.pem
+      keyFile: /etc/traefik/certs/dashboard-key.pem
+    - certFile: /etc/traefik/certs/helpdesk.pem
+      keyFile: /etc/traefik/certs/helpdesk-key.pem

@@ -1,0 +1,157 @@
+#!/bin/sh
+
+# ssl.sh - Automated OpenSSL Certificate Generation for Wazuh
+# Refactored for maximum compatibility across Linux shells.
+
+set -e
+
+# --- Environment Setup ---
+# Get the absolute path of the script's parent directory (the project root)
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+# --- Configuration & Defaults ---
+ENV_FILE=".env"
+OUTPUT_DIR="certs"
+NODE_EXT_FILE="node.ext"
+
+# Load environment variables if .env file exists
+if [ -f "$ENV_FILE" ]; then
+    . "./$ENV_FILE"
+fi
+
+# Use values from .env or set defaults
+DOMAIN="${DOMAIN:-soc-demo.menonsoftware.lan}"
+DAYS="${DAYS:-3650}"
+COUNTRY="${COUNTRY:-IN}"
+STATE="${STATE:-Maharashtra}"
+LOCALITY="${LOCALITY:-Mumbai}"
+ORGANIZATION="${ORGANIZATION:-Acme Corporation}"
+CN_ROOT="${CN_ROOT:-RootCA}"
+CN_ADMIN="${CN_ADMIN:-admin}"
+
+# --- Helpers ---
+
+log() {
+    printf "\033[1;32m[INFO]\033[0m %s\n" "$1"
+}
+
+error() {
+    printf "\033[1;31m[ERROR]\033[0m %s\n" "$1" >&2
+    exit 1
+}
+
+# Ensure openssl is installed
+command -v openssl >/dev/null 2>&1 || error "openssl is not installed."
+
+# Prepare output directory
+mkdir -p "$OUTPUT_DIR"
+
+# --- Data Directory Preparation ---
+log "Preparing data directories and setting permissions..."
+
+# Directories to be owned by the container user (UID 1000).
+DATA_DIRS="
+regional/data/indexer1
+regional/data/indexer2
+regional/data/master
+central/data/searchhead
+"
+
+# Directories kept host-owned for scripts to read/write (sentinel files, logs, etc.).
+STATE_DIRS="
+regional/state
+central/state
+"
+
+# Create data directories (will be chown'd to 1000 below)
+for DIR in $DATA_DIRS; do
+    mkdir -p "$DIR"
+done
+
+# Create state directories (stay host-owned)
+for DIR in $STATE_DIRS; do
+    mkdir -p "$DIR"
+done
+
+if command -v docker >/dev/null 2>&1; then
+    log "Using Docker to set correct ownership (1000:1000) for data volumes..."
+    docker run --rm -v "$(pwd):/soc" alpine sh -c "chown -R 1000:1000 /soc/regional/data /soc/central/data"
+else
+    log "⚠️  Docker not found. Please ensure $(pwd)/{regional,central}/data are owned by UID 1000."
+fi
+
+# --- Certificate Generation ---
+# Move into the output directory for generation
+cd "$OUTPUT_DIR"
+
+log "Generating Internal Root CA..."
+openssl genrsa -out root-ca-key.pem 4096
+openssl req -x509 -new -nodes -key root-ca-key.pem -sha256 -days "$DAYS" -out root-ca.pem \
+    -subj "/C=$COUNTRY/ST=$STATE/L=$LOCALITY/O=$ORGANIZATION/CN=$CN_ROOT"
+
+log "Generating Admin Certificate..."
+openssl genrsa -out admin-key.pem 2048
+# Convert to PKCS#8
+openssl pkcs8 -in admin-key.pem -topk8 -nocrypt -out admin-key.pem.tmp && mv admin-key.pem.tmp admin-key.pem
+
+openssl req -new -key admin-key.pem -out admin.csr \
+    -subj "/C=$COUNTRY/ST=$STATE/L=$LOCALITY/O=$ORGANIZATION/CN=$CN_ADMIN"
+openssl x509 -req -in admin.csr -CA root-ca.pem -CAkey root-ca-key.pem -CAcreateserial -out admin.pem -days "$DAYS" -sha256
+
+# Space-separated list for POSIX compatibility
+NODES="master worker1 worker2 indexer1 indexer2 dashboard searchhead helpdesk"
+
+for NODE in $NODES; do
+    log "Processing node: $NODE..."
+    
+    # Generate a temporary node-specific extension file
+    NODE_EXT="$NODE.ext"
+    
+    # Adjust for service names with dots
+    case $NODE in
+        indexer*)
+            ALT_NAME="wazuh.indexer.${NODE#indexer}"
+            ;;
+        master)
+            ALT_NAME="wazuh.manager.master"
+            ;;
+        *)
+            ALT_NAME="wazuh.$NODE"
+            ;;
+    esac
+
+    cat > "$NODE_EXT" << EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 = $NODE.$DOMAIN
+DNS.2 = $NODE
+DNS.3 = $ALT_NAME
+DNS.4 = localhost
+IP.1 = 127.0.0.1
+EOF
+
+    openssl genrsa -out "$NODE-key.pem" 2048
+    # Convert to PKCS#8
+    openssl pkcs8 -in "$NODE-key.pem" -topk8 -nocrypt -out "$NODE-key.pem.tmp" && mv "$NODE-key.pem.tmp" "$NODE-key.pem"
+
+    openssl req -new -key "$NODE-key.pem" -out "$NODE.csr" \
+        -subj "/C=$COUNTRY/ST=$STATE/L=$LOCALITY/O=$ORGANIZATION/CN=$NODE.$DOMAIN"
+    openssl x509 -req -in "$NODE.csr" -CA root-ca.pem -CAkey root-ca-key.pem -CAcreateserial \
+        -out "$NODE.pem" -days "$DAYS" -sha256 -extfile "$NODE_EXT"
+    
+    rm -f "$NODE_EXT"
+done
+
+# Cleanup temporary files
+rm -f *.csr "$NODE_EXT_FILE" root-ca.srl
+
+# Ensure certificates and keys are readable by containers (non-root users like wazuh-indexer)
+log "Setting permissions on generated certificates..."
+chmod 644 *.pem
+
+log "Certificates generated successfully in the '$OUTPUT_DIR' directory."
+log "Mount these into your Docker volumes as needed."

@@ -1,0 +1,7 @@
+<group name="sophos,low">
+    <rule id="200701" level="1">
+    <if_sid>200700</if_sid>
+    <field name="severity">low</field>
+    <description>Low Sophos Alert - $(name)</description>
+  </rule>
+</group>

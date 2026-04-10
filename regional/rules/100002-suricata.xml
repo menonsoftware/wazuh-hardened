@@ -1,0 +1,8 @@
+<!-- Suricata Rules -->
+<group name="suricata,netflow">
+        <rule id="100002" level="3">
+                <if_sid>86600</if_sid>
+                <options>no_full_log</options>
+                <description>Suricata Traffic - $(event_type).</description>
+        </rule>
+</group>
