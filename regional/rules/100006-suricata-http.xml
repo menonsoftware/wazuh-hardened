@@ -1,0 +1,7 @@
+<group name="suricata,suricata_http">
+        <rule id="100006" level="3">
+                <if_sid>86602</if_sid>
+                <options>no_full_log</options>
+                <description>Suricata HTTP Traffic.</description>
+        </rule>
+</group>

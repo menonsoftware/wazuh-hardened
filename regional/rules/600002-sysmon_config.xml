@@ -1,0 +1,9 @@
+<group name="sysmon_config,">
+ <rule id="600002" level="3">
+    <decoded_as>json</decoded_as>
+    <field name="group">^SysmonConfigReload$</field>
+    <description>Sysmon config $(step).</description>
+    <group>socfortress,</group>
+    <options>no_full_log</options>
+  </rule>
+</group>

@@ -1,0 +1,7 @@
+<group name="suricata,suricata_dns">
+        <rule id="100007" level="3">
+                <if_sid>86603</if_sid>
+                <options>no_full_log</options>
+                <description>Suricata DNS Traffic.</description>
+        </rule>
+</group>

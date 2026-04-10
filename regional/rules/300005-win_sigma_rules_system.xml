@@ -1,0 +1,24 @@
+<group name="windows,system,">
+<rule id="300005" level="15">
+<if_sid>60002</if_sid>
+<description>Chafer Activity</description>
+<mitre>
+<id>T1112</id>
+</mitre>
+<options>no_full_log</options>
+<field name="win.eventdata.EventID">^7045$</field>
+<field name="win.eventdata.TaskName">^SC Scheduled Scan$|^UpdatMachine$</field>
+<group>sigma_rules,</group>
+</rule>
+<rule id="300006" level="15">
+<if_sid>60002</if_sid>
+<description>Turla PNG Dropper Service</description>
+<mitre>
+<id>T1543</id>
+</mitre>
+<options>no_full_log</options>
+<field name="win.eventdata.EventID">^7045$</field>
+<field name="win.eventdata.ServiceName">^WerFaultSvc$</field>
+<group>sigma_rules,</group>
+</rule>
+</group>

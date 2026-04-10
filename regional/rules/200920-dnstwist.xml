@@ -1,0 +1,8 @@
+<group name="dnstwist,">
+ <rule id="200920" level="3">
+    <location>dnstwist_registered</location>
+    <description>DNStwist Registered Domains</description>
+    <options>no_full_log</options>
+    <group>registered,</group>
+  </rule>
+</group>
