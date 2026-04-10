@@ -94,25 +94,89 @@ Notes:
 
 ## Prerequisites
 
-### Linux
+### Software
 
-- Ubuntu 22.04+ recommended
-- Docker Engine `20.10+` and Docker Compose `v2`
-- OpenSSL
-- Hardware baseline for full stack: 24 GB+ RAM (32 GB recommended), 16+ CPU threads, fast SSD
-- Host kernel setting for OpenSearch:
+| Tool | Version | Notes |
+|------|---------|-------|
+| Docker Engine | `20.10+` | Must support Compose file format 3.8+ |
+| Docker Compose | `v2` | CLI plugin (`docker compose`, not `docker-compose`) |
+| OpenSSL | any | Used by `ssl.sh` for TLS cert generation |
+| Python 3 | `3.8+` | Only needed if using `init_secrets.py` for interactive `.env` setup |
+| bash | any | Only needed for `backup.sh`; all other scripts use POSIX `sh` |
+| tar | any | Only needed for `backup.sh` |
+
+### Hardware (minimum for full stack at ~1k agents)
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| RAM | 24 GB | 32 GB |
+| CPU | 8 threads | 16+ threads |
+| Disk | 100 GB SSD | 250 GB+ SSD (fast I/O required by OpenSearch) |
+
+Disk breakdown:
+- `regional/data/` — 50–100 GB+ per indexer (depends on log volume)
+- `central/data/` — 20–50 GB (searchhead)
+- `edge/data/letsencrypt/` — < 1 MB (ACME cache)
+- `certs/` — < 1 MB (generated certificates)
+
+### Network Ports
+
+The following host ports must be available (defaults from `.env` files):
+
+| Port | Service | Protocol |
+|------|---------|----------|
+| `80` | Traefik HTTP → HTTPS redirect | TCP |
+| `443` | Traefik HTTPS (Dashboard ingress) | TCP |
+| `1514` | Wazuh Manager (agent enrollment) | TCP |
+| `1515` | Wazuh Manager (enrollment protocol) | TCP |
+| `9200` | Indexer-1 REST API | TCP/HTTPS |
+| `9201` | Indexer-2 REST API | TCP/HTTPS |
+| `9300` | Indexer-1 cluster transport | TCP |
+| `9301` | Indexer-2 cluster transport | TCP |
+| `55000` | Wazuh Manager REST API | TCP/HTTPS |
+
+### Host Kernel Settings
+
+OpenSearch requires a higher virtual memory map limit:
+
+**Linux:**
 
 ```bash
 sudo sysctl -w vm.max_map_count=262144
+# persist across reboots
 echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf
 ```
 
-### macOS
+**macOS:** Managed automatically inside the Docker Desktop Linux VM. The macOS start script validates this and will prompt you if adjustment is needed.
 
-- macOS Ventura or later recommended
-- Docker Desktop for Mac (manages `vm.max_map_count` inside its Linux VM)
-- OpenSSL (ships as LibreSSL; Homebrew `openssl` also works)
-- Hardware baseline: Apple Silicon or Intel Mac with 24 GB+ RAM
+### DNS
+
+`DASHBOARD_FQDN` (set in `edge/.env`) must resolve to the host running the stack. Traefik uses this hostname for Let's Encrypt certificate issuance — if DNS does not point to the host, ACME HTTP-01 challenges will fail and the dashboard will not be reachable over HTTPS.
+
+For local/lab deployments, add the FQDN to `/etc/hosts` on the host and any client machines.
+
+### OS-Specific Notes
+
+**Linux:**
+- Ubuntu 22.04+ recommended (kernel 5.10+)
+
+**macOS:**
+- macOS Ventura or later recommended (Apple Silicon or Intel)
+- Docker Desktop for Mac required
+- OpenSSL ships as LibreSSL; Homebrew `openssl` also works
+
+### Environment Files
+
+Before first run, configure these `.env` files:
+
+| File | Key Settings |
+|------|-------------|
+| Root `.env` | Certificate subject (`COUNTRY`, `STATE`, `LOCALITY`, `ORGANIZATION`), `DOMAIN`, cert validity (`DAYS`) |
+| `regional/.env` | Indexer/Manager resource limits, ports, credentials (`OPENSEARCH_INITIAL_ADMIN_PASSWORD`) |
+| `central/.env` | Searchhead/Dashboard resource limits, `DASHBOARD_FQDN`, remote indexer endpoints |
+| `edge/.env` | `TRAEFIK_ACME_EMAIL` for Let's Encrypt, Traefik resource limits |
+
+> **Important:** Certificate subject values in the root `.env` must match the `admin_dn` / `nodes_dn` entries in `opensearch.yml` or security initialization will fail silently.
 
 ## Configuration
 
