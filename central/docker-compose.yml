@@ -1,0 +1,104 @@
+services:
+  wazuh.searchhead:
+    image: wazuh/wazuh-indexer:4.14.4
+    hostname: searchhead.${DOMAIN}
+    restart: always
+    env_file:
+      - ../.env
+    environment:
+      - "OPENSEARCH_JAVA_OPTS=${SEARCHHEAD_JAVA_OPTS}"
+      - "cluster.name=${CENTRAL_CLUSTER_NAME}"
+      - "node.name=wazuh.searchhead"
+      - "discovery.type=single-node"
+      - "OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}"
+      - "SEARCHHEAD_CERT_CN=searchhead.${DOMAIN}"
+    volumes:
+      - ./opensearch.yml:/usr/share/wazuh-indexer/config/opensearch.yml:ro
+      - ./data/searchhead:/usr/share/wazuh-indexer/data
+      - ../certs/searchhead.pem:/usr/share/wazuh-indexer/config/certs/indexer.pem:ro
+      - ../certs/searchhead-key.pem:/usr/share/wazuh-indexer/config/certs/indexer-key.pem:ro
+      - ../certs/root-ca.pem:/usr/share/wazuh-indexer/config/certs/root-ca.pem:ro
+      - ../certs/admin.pem:/usr/share/wazuh-indexer/config/certs/admin.pem:ro
+      - ../certs/admin-key.pem:/usr/share/wazuh-indexer/config/certs/admin-key.pem:ro
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-u", "${INDEXER_USER}:${INDEXER_PASSWORD}", "-f", "https://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '${SEARCHHEAD_CPU_LIMIT}'
+          memory: ${SEARCHHEAD_MEMORY_LIMIT}
+        reservations:
+          cpus: '${SEARCHHEAD_CPU_RESERVATION}'
+          memory: ${SEARCHHEAD_MEMORY_RESERVATION}
+    networks:
+      - wazuh-net
+
+  wazuh.dashboard:
+    image: wazuh/wazuh-dashboard:4.14.4
+    hostname: ${DOMAIN}
+    restart: always
+    environment:
+      - OPENSEARCH_HOST_1=${OPENSEARCH_HOST_1}
+      - OPENSEARCH_HOST_2=${OPENSEARCH_HOST_2}
+      - OPENSEARCH_HOSTS=["${OPENSEARCH_HOST_1}","${OPENSEARCH_HOST_2}"]
+      - SERVER_HOST=0.0.0.0
+      - INDEXER_USER=${INDEXER_USER}
+      - INDEXER_PASSWORD=${INDEXER_PASSWORD}
+    extra_hosts:
+      - "${WAZUH_MANAGER_HOST}:host-gateway"
+      - "${WAZUH_INDEXER_HOST}:host-gateway"
+      - "${INDEXER_NODE_1_HOST}:host-gateway"
+      - "${INDEXER_NODE_2_HOST}:host-gateway"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=edge-net"
+      - "traefik.http.routers.wazuh-dashboard.rule=Host(`${DASHBOARD_FQDN}`)"
+      - "traefik.http.routers.wazuh-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.wazuh-dashboard.tls=true"
+      - "traefik.http.routers.wazuh-dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.services.wazuh-dashboard.loadbalancer.server.port=5601"
+      - "traefik.http.services.wazuh-dashboard.loadbalancer.server.scheme=https"
+      - "traefik.http.services.wazuh-dashboard.loadbalancer.serverstransport=internal-insecure@file"
+    volumes:
+      - ./opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro
+      - ./wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml:ro
+      - ../certs/dashboard.pem:/usr/share/wazuh-dashboard/certs/dashboard.pem:ro
+      - ../certs/dashboard-key.pem:/usr/share/wazuh-dashboard/certs/dashboard-key.pem:ro
+      - ../certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro
+    depends_on:
+      wazuh.searchhead:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-u", "${INDEXER_USER}:${INDEXER_PASSWORD}", "-f", "https://localhost:5601/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '${DASHBOARD_CPU_LIMIT}'
+          memory: ${DASHBOARD_MEMORY_LIMIT}
+        reservations:
+          cpus: '${DASHBOARD_CPU_RESERVATION}'
+          memory: ${DASHBOARD_MEMORY_RESERVATION}
+    networks:
+      - wazuh-net
+      - edge-net
+
+networks:
+  wazuh-net:
+    driver: bridge
+  edge-net:
+    external: true

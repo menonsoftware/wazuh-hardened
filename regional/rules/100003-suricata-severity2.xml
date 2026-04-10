@@ -1,0 +1,8 @@
+<group name="suricata,suricata_severity2">
+        <rule id="100003" level="10">
+                <if_sid>86601</if_sid>
+                <field name="alert.severity">2</field>
+                <options>no_full_log</options>
+                <description>Suricata Alert - $(alert.signature). Signature ID: $(alert.signature_id).</description>
+        </rule>
+</group>

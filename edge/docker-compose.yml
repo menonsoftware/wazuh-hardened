@@ -1,0 +1,47 @@
+services:
+  traefik:
+    image: traefik:v2.11.24
+    container_name: soc_traefik
+    restart: unless-stopped
+    command:
+      - --api.dashboard=false
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --ping=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./data/letsencrypt:/letsencrypt
+      - ../certs/dashboard.pem:/etc/traefik/certs/dashboard.pem:ro
+      - ../certs/dashboard-key.pem:/etc/traefik/certs/dashboard-key.pem:ro
+      - ../certs/helpdesk.pem:/etc/traefik/certs/helpdesk.pem:ro
+      - ../certs/helpdesk-key.pem:/etc/traefik/certs/helpdesk-key.pem:ro
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "${TRAEFIK_CPU_LIMIT}"
+          memory: ${TRAEFIK_MEMORY_LIMIT}
+        reservations:
+          cpus: "${TRAEFIK_CPU_RESERVATION}"
+          memory: ${TRAEFIK_MEMORY_RESERVATION}
+    networks:
+      - edge-net
+
+networks:
+  edge-net:
+    external: true

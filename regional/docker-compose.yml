@@ -1,0 +1,153 @@
+services:
+  wazuh.indexer.1:
+    image: wazuh/wazuh-indexer:4.14.4
+    hostname: indexer1.${DOMAIN}
+    restart: always
+    env_file:
+      - ../.env
+    environment:
+      - "OPENSEARCH_JAVA_OPTS=${INDEXER_JAVA_OPTS}"
+      - "CLUSTER_NAME=${REGIONAL_CLUSTER_NAME}"
+      - "NODE_NAME=wazuh.indexer.1"
+      - "OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}"
+      - "INDEXER1_CERT_CN=indexer1.${DOMAIN}"
+      - "INDEXER2_CERT_CN=indexer2.${DOMAIN}"
+    volumes:
+      - ./opensearch.yml:/usr/share/wazuh-indexer/config/opensearch.yml:ro
+      - ./data/indexer1:/usr/share/wazuh-indexer/data
+      - ../certs/indexer1.pem:/usr/share/wazuh-indexer/config/certs/indexer.pem:ro
+      - ../certs/indexer1-key.pem:/usr/share/wazuh-indexer/config/certs/indexer-key.pem:ro
+      - ../certs/root-ca.pem:/usr/share/wazuh-indexer/config/certs/root-ca.pem:ro
+      - ../certs/admin.pem:/usr/share/wazuh-indexer/config/certs/admin.pem:ro
+      - ../certs/admin-key.pem:/usr/share/wazuh-indexer/config/certs/admin-key.pem:ro
+    ports:
+      - "${INDEXER_PORT_1}:9200"
+      - "${INDEXER_PORT_3}:9300"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-u", "${INDEXER_USER}:${INDEXER_PASSWORD}", "-f", "https://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '${INDEXER_CPU_LIMIT}'
+          memory: ${INDEXER_MEMORY_LIMIT}
+        reservations:
+          cpus: '${INDEXER_CPU_RESERVATION}'
+          memory: ${INDEXER_MEMORY_RESERVATION}
+    networks:
+      wazuh-net:
+        aliases:
+          - wazuh.indexer.1
+
+  wazuh.indexer.2:
+    image: wazuh/wazuh-indexer:4.14.4
+    hostname: indexer2.${DOMAIN}
+    restart: always
+    env_file:
+      - ../.env
+    environment:
+      - "OPENSEARCH_JAVA_OPTS=${INDEXER_JAVA_OPTS}"
+      - "CLUSTER_NAME=${REGIONAL_CLUSTER_NAME}"
+      - "NODE_NAME=wazuh.indexer.2"
+      - "OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}"
+      - "INDEXER1_CERT_CN=indexer1.${DOMAIN}"
+      - "INDEXER2_CERT_CN=indexer2.${DOMAIN}"
+    volumes:
+      - ./opensearch.yml:/usr/share/wazuh-indexer/config/opensearch.yml:ro
+      - ./data/indexer2:/usr/share/wazuh-indexer/data
+      - ../certs/indexer2.pem:/usr/share/wazuh-indexer/config/certs/indexer.pem:ro
+      - ../certs/indexer2-key.pem:/usr/share/wazuh-indexer/config/certs/indexer-key.pem:ro
+      - ../certs/root-ca.pem:/usr/share/wazuh-indexer/config/certs/root-ca.pem:ro
+      - ../certs/admin.pem:/usr/share/wazuh-indexer/config/certs/admin.pem:ro
+      - ../certs/admin-key.pem:/usr/share/wazuh-indexer/config/certs/admin-key.pem:ro
+    ports:
+      - "${INDEXER_PORT_2}:9200" 
+      - "${INDEXER_PORT_4}:9300"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-u", "${INDEXER_USER}:${INDEXER_PASSWORD}", "-f", "https://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '${INDEXER_CPU_LIMIT}'
+          memory: ${INDEXER_MEMORY_LIMIT}
+        reservations:
+          cpus: '${INDEXER_CPU_RESERVATION}'
+          memory: ${INDEXER_MEMORY_RESERVATION}
+    networks:
+      wazuh-net:
+        aliases:
+          - wazuh.indexer.2
+
+  wazuh.manager.master:
+    image: wazuh/wazuh-manager:4.14.4
+    hostname: master.${DOMAIN}
+    restart: always
+    environment:
+      - "INDEXER_URL=https://wazuh.indexer.1:9200,https://wazuh.indexer.2:9200"
+      - INDEXER_USERNAME=${INDEXER_USER}
+      - INDEXER_PASSWORD=${INDEXER_PASSWORD}
+      - FILEBEAT_SSL_VERIFICATION_MODE=full
+      - SSL_CERTIFICATE_AUTHORITIES=/etc/filebeat/certs/root-ca.pem
+      - SSL_CERTIFICATE=/etc/filebeat/certs/master.pem
+      - SSL_KEY=/etc/filebeat/certs/master-key.pem
+    ports:
+      - "${MANAGER_PORT_TCP}:1514/tcp"
+      - "${MANAGER_PORT_ENROLL}:1515/tcp"
+      - "${MANAGER_PORT_API}:55000/tcp"
+    volumes:
+      - ./data/master:/var/ossec/data
+      - ./rules:/var/ossec/etc/rules/socfortress:ro
+      - ./decoders:/var/ossec/etc/decoders/socfortress:ro
+      - ./lists:/var/ossec/etc/lists/socfortress
+      - ./ossec.conf:/var/ossec/etc/ossec.conf:ro
+      - ../certs/master.pem:/etc/filebeat/certs/master.pem:ro
+      - ../certs/master-key.pem:/etc/filebeat/certs/master-key.pem:ro
+      - ../certs/root-ca.pem:/etc/filebeat/certs/root-ca.pem:ro
+    depends_on:
+      wazuh.indexer.1:
+        condition: service_started
+      wazuh.indexer.2:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "/var/ossec/bin/wazuh-control status | grep -q 'wazuh-analysisd is running'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '${MANAGER_CPU_LIMIT}'
+          memory: ${MANAGER_MEMORY_LIMIT}
+        reservations:
+          cpus: '${MANAGER_CPU_RESERVATION}'
+          memory: ${MANAGER_MEMORY_RESERVATION}
+    networks:
+      wazuh-net:
+        aliases:
+          - wazuh.manager.master
+
+networks:
+  wazuh-net:
+    driver: bridge

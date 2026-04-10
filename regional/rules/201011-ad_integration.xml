@@ -1,0 +1,7 @@
+<group name="ad_integration,">
+  <rule id="201011" level="3">
+    <field name="integration">ad_integration</field>
+    <description>AD Inventory Integration Results</description>
+    <options>no_full_log</options>
+  </rule>
+</group>
